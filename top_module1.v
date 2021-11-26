@@ -158,6 +158,165 @@ endmodule
 // Code your design here
 //`timescale 1ns / 1ps
 
+
+
+
+
+module Keyboard(
+	input CLK,	
+   input PS2_CLK,	
+   input PS2_DATA,
+
+
+//	output reg [3:0]COUNT,
+//	output reg TRIG_ARR,
+//	output reg [7:0]CODEWORD,
+   output reg up, reg down, reg left, reg right	//8 LEDs
+   );
+
+  wire [7:0] ARROW_UP = 8'h1D;	//codes for arrows
+  wire [7:0] ARROW_DOWN = 8'h1B;
+  wire [7:0] ARROW_LEFT = 8'h1C;
+  wire [7:0] ARROW_RIGHT = 8'h23;
+	//wire [7:0] EXTENDED = 8'hE0;	//codes 
+	//wire [7:0] RELEASED = 8'hF0;
+
+	reg read; 
+	reg [11:0] count_reading;	
+	reg PREVIOUS_STATE;			
+	reg scan_err;				
+	reg [10:0] scan_code;		
+	reg [7:0] CODEWORD;			
+	reg TRIG_ARR;				
+	reg [3:0]COUNT;				
+	reg TRIGGER = 0;			 
+	reg [7:0]DOWNCOUNTER = 0;	
+
+	
+	initial begin
+		PREVIOUS_STATE = 1;		
+		scan_err = 0;		
+		scan_code = 0;
+		COUNT = 0;			
+		CODEWORD = 0;
+		read = 0;
+		count_reading = 0;
+	end
+
+	always @(posedge CLK) begin	
+		if (DOWNCOUNTER < 249) begin 
+			DOWNCOUNTER <= DOWNCOUNTER + 1;
+			TRIGGER <= 0;
+		end
+		else begin
+			DOWNCOUNTER <= 0;
+			TRIGGER <= 1;
+		end
+	end
+	
+	always @(posedge CLK) begin	
+		if (TRIGGER) begin
+			if (read)				
+				count_reading <= count_reading + 1;
+			else 						
+				count_reading <= 0;		
+		end
+	end
+
+
+	always @(posedge CLK) begin		
+	if (TRIGGER) begin						
+		if (PS2_CLK != PREVIOUS_STATE) begin
+			if (!PS2_CLK) begin				
+				read <= 1;				
+				scan_err <= 0;			
+				scan_code[10:0] <= {PS2_DATA, scan_code[10:1]};	
+				COUNT <= COUNT + 1;			
+			end
+		end
+		else if (COUNT == 11) begin				
+			COUNT <= 0;
+			read <= 0;				
+			TRIG_ARR <= 1;			
+			
+			if (!scan_code[10] || scan_code[0] || !(scan_code[1]^scan_code[2]^scan_code[3]^scan_code[4]
+				^scan_code[5]^scan_code[6]^scan_code[7]^scan_code[8]
+				^scan_code[9]))
+				scan_err <= 1;
+			else 
+				scan_err <= 0;
+		end	
+		else  begin						
+			TRIG_ARR <= 0;				
+			if (COUNT < 11 && count_reading >= 4000) begin	
+				COUNT <= 0;				
+				read <= 0;				
+			end
+		end
+	PREVIOUS_STATE <= PS2_CLK;					
+	end
+	end
+
+
+	always @(posedge CLK) begin
+		if (TRIGGER) begin					
+			if (TRIG_ARR) begin				
+				if (scan_err) begin			
+					CODEWORD <= 8'd0;		
+				end
+				else begin
+					CODEWORD <= scan_code[8:1];	
+				end				
+			end					
+			else CODEWORD <= 8'd0;	
+		end
+		else CODEWORD <= 8'd0;		
+	end
+	
+	always @(posedge CLK) begin
+        up = 0;
+        down = 0;
+        right = 0;
+        left = 0;
+		if (CODEWORD == ARROW_UP)
+		begin				
+			up = 1;
+			down = 0;	
+			left = 0;
+			right =0;	
+		end			
+		else if (CODEWORD == ARROW_DOWN)
+		begin				
+			up = 0;
+			down = 1;	
+			left = 0;
+			right = 0;	
+		end			 
+        else if (CODEWORD == ARROW_LEFT)	
+		begin				
+			up = 0;
+			down = 0;	
+			left = 1;
+			right = 0;	
+		end	
+        else if (CODEWORD == ARROW_RIGHT)	
+		begin				
+			up = 0;
+			down = 0;	
+			left = 0;
+			right = 1;	
+		end	
+	end
+
+endmodule
+
+
+
+
+
+
+
+
 module pixel_gen(
   input [9:0] pixel_x,
   input [9:0] pixel_y,
@@ -175,6 +334,7 @@ module pixel_gen(
   input right
   
 );
+reg [23:0] cp = 0;
 reg [23:0] cm= 0;
 reg w1 = 1'b0;
 reg [10:0] x1 = 10'd320;
@@ -223,6 +383,22 @@ parameter dy2 = 380;
   
   always @ (posedge clk_d) begin
   cm<= cm+1;
+  cp<= cp+1;
+  if (cp>=499999 && (((x1-10 >160 && x1+10 <480) && (y1-10 >20 && y1+10 <460)))) begin
+  cp<=0;
+  if (up) begin
+  dy1 <= dy1 -1;
+  end
+  if (down) begin
+  dy1 <= dy1 +1;
+  end
+  if (left) begin
+  dx1 <= dx1 -1;
+  end
+  if (right) begin
+  dx1 <= dx1 +1;
+  end
+  end
   if ( (~w1)&& (cm>=2499999) && ((x1-10 >160 && x1+10 <480) && (y1-10 >20 && y1+10 <460)) ) begin
   x1 <= x1+1;
   cm <=0;
@@ -371,7 +547,7 @@ endmodule
 
   
 //--------------------------------------
-module top_module1(clk_i, h_sync, v_sync, red_o, green_o, blue_o, x_in,y_in);
+module top_module1(clk_i, h_sync, v_sync, red_o, green_o, blue_o, x_in,y_in,ps2clk,ps2data);
     input clk_i;
     input x_in;
     input y_in;
@@ -391,6 +567,15 @@ module top_module1(clk_i, h_sync, v_sync, red_o, green_o, blue_o, x_in,y_in);
     output [3:0] red_o;
     output [3:0] green_o;
     output [3:0] blue_o;
+    
+    wire u;
+    wire d;
+    wire l;
+    wire r;
+    
+    input ps2clk;
+    input ps2data;
+    
 
    	clk_div g1(.clk(clk_i), .clk_d(clk_d_o));
    	clk_div2 c12(clk,clk_do2);
@@ -398,8 +583,8 @@ module top_module1(clk_i, h_sync, v_sync, red_o, green_o, blue_o, x_in,y_in);
   	counter_10_bit1 v_1(.clk(clk_d_o), .enable(trig_o), .count(v_count));
   
  	vga_sync vga_sync1(.h_count(h_count), .v_count(v_count), .h_sync(h_sync), .v_sync(v_sync), .video_on(video_on), .x_loc(x_loc), .y_loc(y_loc));
-  
-  pixel_gen pixel_gen1(.clk_d(clk_d_o), .pixel_x(x_loc), .pixel_y(y_loc), .video_on(video_on), .red(red_o), .green(green_o), .blue(blue_o),.circle_x(x_in),.circle_y(y_in),.clk_d2(clk_do2));
+  Keyboard k1(clk_d_o,ps2clk,ps2data,u,d,l,r);
+  pixel_gen pixel_gen1(.clk_d(clk_d_o), .pixel_x(x_loc), .pixel_y(y_loc), .video_on(video_on), .red(red_o), .green(green_o), .blue(blue_o),.circle_x(x_in),.circle_y(y_in),.clk_d2(clk_do2),.up(u),.left(l),.right(r),.down(d));
   
   
 endmodule
